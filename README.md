@@ -1,0 +1,70 @@
+# Sajilo Pasal
+
+React storefront and Express/MongoDB marketplace API in one deployable Node.js service.
+
+## Run locally
+
+Requirements: Node.js 22+ and a MongoDB deployment. Copy the required keys into the existing local `.env` file; do not commit `.env`.
+
+```powershell
+npm install
+npm run dev
+```
+
+In a second terminal, run `npm run dev:client` and open the Vite URL. The dev server proxies `/api` to Express on port 3000. For a production build served by Express, run:
+
+```powershell
+npm run build
+npm start
+```
+
+To add local, purchaseable demo listings for storefront development, configure `DEMO_SELLER_PASSWORD` privately in `.env` (at least 12 characters), then run `npm run seed:demo`. The seeder is disabled when `NODE_ENV=production`; demo listings can be ordered with cash on delivery and the local seller account can be used to manage fulfillment. Do not use demo listings in a live marketplace.
+
+## Configuration
+
+The server loads `.env` at startup. Set:
+
+- `MONGO_URI`, `JWT_SECRET` (a fresh random secret), and `JWT_EXPIRES_IN`
+- `PORT`, `NODE_ENV`, `API_PUBLIC_URL`, and `FRONTEND_URL`
+- `SELLER_PAYMENT_ENCRYPTION_KEY`: base64 encoding of a randomly generated 32-byte key. Generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` and store it in the hosting secret manager. Losing this key makes saved seller secrets unusable; rotate it only with a planned credential re-encryption.
+- `ESEWA_BASE_URL` and `ESEWA_ENV` (`uat` or `production`). Optionally set `ESEWA_STATUS_URL`.
+- `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` to enable seller image uploads.
+- Existing email OAuth settings (`EMAIL_USER`, `CLIENT_ID`, `CLIENT_SECRET`, `REFRESH_TOKEN`) to enable account and order email.
+
+For a production deployment, serve the frontend and API from the same HTTPS origin. Point `API_PUBLIC_URL` to that public origin so eSewa can return to `/api/v1/payments/esewa/callback`; set `FRONTEND_URL` to the storefront origin. Configure eSewa with the production merchant values supplied by eSewa. Do not use UAT credentials for live transactions. MongoDB must support transactions (MongoDB Atlas or a replica set) because checkout reserves inventory and creates orders atomically.
+
+### First administrator
+
+Register the administrator account through the normal register flow, then promote that account once using an authenticated MongoDB administration session:
+
+```javascript
+db.users.updateOne(
+  { email: "admin@example.com" },
+  { $set: { role: "admin" } }
+)
+```
+
+The Mongoose model collection name may be lowercased/pluralized by Mongoose; check your collection name before running this command. Never expose database credentials in a public shell or source file. After promotion, manage seller roles from the admin dashboard.
+
+## Docker deployment
+
+Build the production image with `docker build -t sajilo-pasal .`, then run it with a secret-managed environment, for example:
+
+```powershell
+docker run --env-file .env -p 3000:3000 sajilo-pasal
+```
+
+Use a managed MongoDB replica set and an HTTPS reverse proxy/hosting platform in production. Keep `.env` outside the image and supply secrets through the hosting platform's secret manager.
+
+## Payment and inventory notes
+
+- Checkout ignores submitted prices and totals; it prices products from MongoDB and atomically verifies/decrements stock.
+- Product listings are Nepal-only and record province, district, municipality, and optional ward. Buyers can filter by province/district; the initial catalog seeds vegetables, drinks, medical supplies, grocery, household, personal care, and other local goods.
+- Signup supports buyer or seller mode. People can switch modes later; seller listings are hidden in buyer mode and restored when switching back. Switching away from seller mode is blocked while the seller still has unfulfilled order items.
+- Each seller can connect their eSewa merchant code and API secret from Seller Studio. Secrets are encrypted at rest with AES-256-GCM and are never returned by the API. The app does not ask for eSewa login passwords. A seller's merchant account must be enabled for the configured eSewa environment.
+- A multi-seller checkout creates one separate order and eSewa transaction per seller, so each payment is sent directly to that seller's merchant account. Each seller's delivery fee is calculated separately. Buyers return to the checkout payment page after each eSewa transaction to pay the next seller.
+- eSewa initiation signs the server-calculated seller-order total. Callback signatures and the eSewa transaction-status endpoint are both verified before marking an order paid.
+- Cash on delivery is available. Bank transfer is not exposed as an online payment option because this project has no bank API credentials or automated bank reconciliation endpoint.
+- Seller image upload stores images in Cloudinary. Product image URL entry remains available as a fallback.
+
+Before going live, set `SELLER_PAYMENT_ENCRYPTION_KEY`, have each seller connect actual production merchant credentials, complete low-value transactions for multiple sellers, verify callbacks and order-state behavior, and perform a deployment smoke test. Payment and email features cannot operate without their respective provider credentials.

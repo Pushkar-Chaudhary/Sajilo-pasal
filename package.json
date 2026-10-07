@@ -2,9 +2,17 @@
   "name": "banking-system",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "server.js",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "dev:client": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "test": "node --test",
+    "seed:demo": "node scripts/seed-demo-catalog.js"
   },
   "keywords": [],
   "author": "",
@@ -12,16 +20,25 @@
   "type": "commonjs",
   "dependencies": {
     "bcrypt": "^6.0.0",
-    "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.7.0",
     "cookie-parser": "^1.4.7",
     "dotenv": "^18.0.5",
     "express": "^5.2.1",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.11.0",
-    "nodemon": "^1.14.10"
+    "multer": "^2.0.1",
+    "nodemailer": "^10.0.15",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.6.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.5.2",
+    "vite": "^6.3.5"
   },
   "allowScripts": {
-    "nodemon@1.14.10": true,
     "bcrypt@6.0.0": true,
     "jsonwebtoken@9.0.3": true
   }
