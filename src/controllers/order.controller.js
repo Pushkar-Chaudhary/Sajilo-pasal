@@ -96,7 +96,7 @@ async function createOrder(req, res) {
       _id: { $in: [...sellerItems.keys()] },
       role: 'seller',
       isActive: { $ne: false }
-    }).select('name paymentSettings.esewa.merchantCode +paymentSettings.esewa.secretCiphertext')
+    }).select('name email phone paymentSettings.esewa.merchantCode +paymentSettings.esewa.secretCiphertext')
       .session(session)
       .lean();
     if (paymentMethod === 'esewa') {
@@ -168,19 +168,44 @@ async function createOrder(req, res) {
     const buyer = await userModel.findById(req.user._id).lean();
     const checkoutTotal = orderDocs.reduce((sum, order) => sum + order.total, 0);
 
+    // 1. Send detailed order confirmation email to the buyer
     try {
-      await emailService.sendEmail(
-        buyer.email,
-        paymentMethod === 'esewa' ? 'Marketplace orders placed — payment pending' : 'Marketplace orders confirmed',
-        paymentMethod === 'esewa'
-          ? `Your ${orderDocs.length} seller order(s) totaling NPR ${checkoutTotal} are placed. Complete each seller's eSewa payment to confirm it.`
-          : `Your ${orderDocs.length} seller order(s) have been placed successfully.`,
-        paymentMethod === 'esewa'
-          ? `<p>Your ${orderDocs.length} seller order(s) are placed. Complete each seller's eSewa payment to confirm them.</p>`
-          : `<p>Your ${orderDocs.length} seller order(s) have been placed successfully.</p>`
-      );
+      await emailService.sendOrderConfirmationToBuyer({
+        buyerEmail: buyer.email,
+        buyerName: buyer.name,
+        orders: orderDocs,
+        shippingAddress,
+        paymentMethod,
+        checkoutTotal
+      });
     } catch (emailError) {
-      console.error('Order confirmation email failed:', emailError.message);
+      console.error('Order confirmation email to buyer failed:', emailError.message);
+    }
+
+    // 2. Send detailed order notification emails to each seller
+    const sellerMap = new Map(sellers.map((s) => [String(s._id), s]));
+    for (const order of orderDocs) {
+      const firstItem = order.items[0];
+      const sellerId = String(firstItem?.seller);
+      const seller = sellerMap.get(sellerId);
+      if (seller && seller.email) {
+        try {
+          await emailService.sendOrderNotificationToSeller({
+            sellerEmail: seller.email,
+            sellerName: seller.name,
+            order,
+            sellerItems: order.items,
+            buyerInfo: {
+              name: buyer.name,
+              email: buyer.email,
+              phone: shippingAddress.phone || buyer.phone
+            },
+            shippingAddress
+          });
+        } catch (sellerEmailError) {
+          console.error(`Order notification email to seller ${seller.email} failed:`, sellerEmailError.message);
+        }
+      }
     }
 
     return res.status(201).json({
@@ -247,12 +272,15 @@ async function getMyOrders(req, res) {
 
 async function getOrderById(req, res) {
   try {
-    const order = await Order.findById(req.params.id).populate('items.product', 'name images').lean();
+    const order = await Order.findById(req.params.id)
+      .populate('items.product', 'name images')
+      .populate('buyer', 'name email phone')
+      .lean();
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
     }
 
-    const isBuyer = String(order.buyer) === String(req.user._id);
+    const isBuyer = String(order.buyer?._id || order.buyer) === String(req.user._id);
     const isSeller = order.items.some((item) => String(item.seller) === String(req.user._id));
     const isAdmin = req.user.role === 'admin';
 
@@ -262,7 +290,7 @@ async function getOrderById(req, res) {
 
     if (isSeller && !isBuyer && !isAdmin) {
       order.items = order.items.filter((item) => String(item.seller) === String(req.user._id));
-      delete order.buyer;
+      // Keep buyer and shipping details so the seller has full customer info to fulfill the order
     }
     return res.json({ order });
   } catch (error) {
@@ -357,12 +385,18 @@ async function getSellerOrders(req, res) {
     const orders = await Order.find({ 'items.seller': req.user._id })
       .sort({ createdAt: -1 })
       .populate('items.product', 'name images')
+      .populate('buyer', 'name email phone')
       .lean();
 
-    const sellerOrders = orders.map((order) => ({
-      ...order,
-      items: order.items.filter((item) => String(item.seller) === String(req.user._id))
-    }));
+    const sellerOrders = orders.map((order) => {
+      const myItems = order.items.filter((item) => String(item.seller) === String(req.user._id));
+      const sellerSubtotal = myItems.reduce((sum, item) => sum + item.subtotal, 0);
+      return {
+        ...order,
+        items: myItems,
+        sellerSubtotal
+      };
+    });
     return res.json({ orders: sellerOrders });
   } catch (error) {
     return serverError(res, 'Failed to fetch seller orders', error);

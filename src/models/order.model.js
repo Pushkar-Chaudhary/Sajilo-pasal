@@ -62,7 +62,7 @@ const orderSchema = new mongoose.Schema(
       addressLine2: { type: String, default: '', trim: true },
       city: { type: String, required: true, trim: true },
       state: { type: String, required: true, trim: true },
-      postalCode: { type: String, required: true, trim: true },
+      postalCode: { type: String, default: '', trim: true },
       country: { type: String, required: true, trim: true }
     },
     paymentMethod: {

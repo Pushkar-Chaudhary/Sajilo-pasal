@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const authRouter = require('./routes/auth.routes');
 const productRouter = require('./routes/product.routes');
@@ -12,11 +13,25 @@ const path = require('path');
 const fs = require('fs');
 const mongoose = require('mongoose');
 
+const cors = require('cors');
+
 const app = express();
 const frontendBuild = path.join(__dirname, '..', 'dist');
 
 app.disable('x-powered-by');
-app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
+app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : 1);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, curl, or same-origin)
+    if (!origin) return callback(null, true);
+    return callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -24,7 +39,8 @@ app.use(helmet({
       'img-src': ["'self'", 'data:', 'https:'],
       'form-action': ["'self'", 'https://epay.esewa.com.np', 'https://rc-epay.esewa.com.np']
     }
-  }
+  },
+  crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
@@ -32,13 +48,14 @@ app.use(cookieParser());
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 10,
+  limit: 15,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { message: 'Too many authentication attempts. Please try again later.' }
 });
 app.use('/api/v1/auth/login', authLimiter);
 app.use('/api/v1/auth/register', authLimiter);
+app.use('/api/v1/auth/send-registration-otp', authLimiter);
 
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/products', productRouter);

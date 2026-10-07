@@ -18,12 +18,15 @@ function submitPaymentForm(payment) {
   form.submit();
 }
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+
 async function request(path, options = {}) {
   const token = localStorage.getItem(tokenKey);
   const isFormData = options.body instanceof FormData;
   const headers = { ...(options.body && !isFormData ? { 'Content-Type': 'application/json' } : {}), ...options.headers };
   if (token) headers.Authorization = `Bearer ${token}`;
-  const response = await fetch(path, { ...options, headers, credentials: 'include' });
+  const url = path.startsWith('http') ? path : `${API_BASE_URL}${path}`;
+  const response = await fetch(url, { ...options, headers, credentials: 'include' });
   const data = response.status === 204 ? {} : await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.message || 'Something went wrong. Please try again.');
   return data;
@@ -277,23 +280,148 @@ function ProductDetail({ session }) {
 function AuthPage({ mode, session }) {
   const navigate = useNavigate();
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState('form'); // 'form' | 'otp'
+  const [regData, setRegData] = useState({ name: '', email: '', password: '', role: 'buyer' });
+  const [otp, setOtp] = useState('');
+
   const submit = async (event) => {
     event.preventDefault();
-    setLoading(true); setError('');
-    const form = new FormData(event.currentTarget);
-    const body = Object.fromEntries(form.entries());
+    setLoading(true);
+    setError('');
+    setNotice('');
+
     try {
-      const data = await request(`/api/v1/auth/${mode}`, { method: 'POST', body: JSON.stringify(body) });
-      session.acceptAuth(data);
-      navigate(data.user.role === 'seller' ? '/seller' : data.user.role === 'admin' ? '/admin' : '/');
-    } catch (err) { setError(err.message); } finally { setLoading(false); }
+      if (mode === 'login') {
+        const form = new FormData(event.currentTarget);
+        const body = Object.fromEntries(form.entries());
+        const data = await request('/api/v1/auth/login', { method: 'POST', body: JSON.stringify(body) });
+        session.acceptAuth(data);
+        navigate(data.user.role === 'seller' ? '/seller' : data.user.role === 'admin' ? '/admin' : '/');
+      } else if (step === 'form') {
+        const form = new FormData(event.currentTarget);
+        const body = Object.fromEntries(form.entries());
+        setRegData(body);
+        const res = await request('/api/v1/auth/send-registration-otp', {
+          method: 'POST',
+          body: JSON.stringify({ name: body.name, email: body.email })
+        });
+        setStep('otp');
+        setNotice(res.message || `Verification code sent to ${body.email}. Please check your inbox.`);
+      } else if (step === 'otp') {
+        const fullBody = { ...regData, otp: otp.trim() };
+        const data = await request('/api/v1/auth/register', {
+          method: 'POST',
+          body: JSON.stringify(fullBody)
+        });
+        session.acceptAuth(data);
+        navigate(data.user.role === 'seller' ? '/seller' : data.user.role === 'admin' ? '/admin' : '/');
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  return <main className="auth-page"><div className="auth-visual"><p className="eyebrow">SAJILO PASAL</p><h1>Good finds.<br /><em>Good people.</em></h1><p>Shop closer to home and meet the people behind what you buy.</p></div><section className="auth-panel"><Link to="/" className="back-link">← Back to the shop</Link><p className="eyebrow">{mode === 'login' ? 'WELCOME BACK' : 'JOIN THE COMMUNITY'}</p><h2>{mode === 'login' ? 'Come on in.' : 'Create your account.'}</h2><p className="muted">{mode === 'login' ? 'Sign in to pick up where you left off.' : 'Your next local favourite is just around the corner.'}</p>
-    <form onSubmit={submit} className="form-stack">{mode === 'register' && <><Field label="Your name" name="name" autoComplete="name" required /><label className="field"><span>Account type</span><select name="role" defaultValue="buyer"><option value="buyer">Buyer</option><option value="seller">Seller</option></select></label></>}<Field label="Email address" name="email" type="email" autoComplete="email" required /><Field label="Password" name="password" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength="6" required />{error && <p className="form-error" role="alert">{error}</p>}<button className="button button-dark full-width" disabled={loading}>{loading ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}</button></form>
-    <p className="auth-switch">{mode === 'login' ? 'New to Sajilo Pasal?' : 'Already have an account?'} <Link to={mode === 'login' ? '/register' : '/login'}>{mode === 'login' ? 'Create an account' : 'Sign in'}</Link></p>
-  </section></main>;
+  const resendOtp = async () => {
+    setError('');
+    setNotice('');
+    setLoading(true);
+    try {
+      const res = await request('/api/v1/auth/send-registration-otp', {
+        method: 'POST',
+        body: JSON.stringify({ name: regData.name, email: regData.email })
+      });
+      setNotice(res.message || `A new verification code was sent to ${regData.email}`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return <main className="auth-page">
+    <div className="auth-visual">
+      <p className="eyebrow">SAJILO PASAL</p>
+      <h1>Good finds.<br /><em>Good people.</em></h1>
+      <p>Shop closer to home and meet the people behind what you buy.</p>
+    </div>
+    <section className="auth-panel">
+      <Link to="/" className="back-link">← Back to the shop</Link>
+      <p className="eyebrow">{mode === 'login' ? 'WELCOME BACK' : 'JOIN THE COMMUNITY'}</p>
+      <h2>{mode === 'login' ? 'Come on in.' : step === 'otp' ? 'Verify your email.' : 'Create your account.'}</h2>
+      <p className="muted">
+        {mode === 'login'
+          ? 'Sign in to pick up where you left off.'
+          : step === 'otp'
+          ? `Enter the 6-digit code sent to ${regData.email}`
+          : 'Your next local favourite is just around the corner.'}
+      </p>
+
+      {notice && <p className="success-message" role="status" style={{ marginBottom: 16 }}>{notice}</p>}
+      {error && <p className="form-error" role="alert" style={{ marginBottom: 16 }}>{error}</p>}
+
+      {mode === 'register' && step === 'otp' ? (
+        <form onSubmit={submit} className="form-stack">
+          <label className="field">
+            <span>6-Digit Verification Code (OTP)</span>
+            <input
+              name="otp"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              placeholder="e.g. 123456"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value)}
+              autoFocus
+              required
+              style={{ fontSize: 20, letterSpacing: 4, textAlign: 'center', fontWeight: 'bold' }}
+            />
+          </label>
+          <button className="button button-dark full-width" disabled={loading || otp.trim().length !== 6}>
+            {loading ? 'Verifying…' : 'Verify & Complete Registration'}
+          </button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, fontSize: 13 }}>
+            <button type="button" className="button button-quiet" onClick={resendOtp} disabled={loading} style={{ padding: 0 }}>
+              Resend verification code
+            </button>
+            <button type="button" className="button button-quiet" onClick={() => { setStep('form'); setError(''); }} disabled={loading} style={{ padding: 0 }}>
+              ← Edit details
+            </button>
+          </div>
+        </form>
+      ) : (
+        <form onSubmit={submit} className="form-stack">
+          {mode === 'register' && <>
+            <Field label="Your name" name="name" defaultValue={regData.name} autoComplete="name" required />
+            <label className="field">
+              <span>Account type</span>
+              <select name="role" defaultValue={regData.role || 'buyer'}>
+                <option value="buyer">Buyer</option>
+                <option value="seller">Seller</option>
+              </select>
+            </label>
+          </>}
+          <Field label="Email address" name="email" type="email" defaultValue={regData.email} autoComplete="email" required />
+          <Field label="Password" name="password" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength="6" required />
+          <button className="button button-dark full-width" disabled={loading}>
+            {loading ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Continue & Send Verification Code'}
+          </button>
+        </form>
+      )}
+
+      <p className="auth-switch">
+        {mode === 'login' ? 'New to Sajilo Pasal?' : 'Already have an account?'}
+        {' '}
+        <Link to={mode === 'login' ? '/register' : '/login'} onClick={() => { setStep('form'); setError(''); setNotice(''); }}>
+          {mode === 'login' ? 'Create an account' : 'Sign in'}
+        </Link>
+      </p>
+    </section>
+  </main>;
 }
 
 function Field({ label, name, type = 'text', required = false, ...props }) {
@@ -372,7 +500,7 @@ function Checkout() {
   };
 
   if (!cart.length) return <main className="page-wrap"><div className="state-card"><h2>Your bag is empty</h2><Link to="/" className="button button-dark">Return to shop</Link></div></main>;
-  return <main className="page-wrap"><p className="eyebrow">CHECKOUT</p><h1 className="page-title">Let’s get it to you.</h1><div className="checkout-layout"><form className="checkout-form" onSubmit={checkout}><h2>Delivery details</h2><div className="field-grid"><Field label="Full name" name="fullName" required autoComplete="name" /><Field label="Phone number" name="phone" required type="tel" autoComplete="tel" /><Field label="Address line 1" name="addressLine1" required autoComplete="address-line1" /><Field label="Address line 2 (optional)" name="addressLine2" autoComplete="address-line2" /><Field label="City / municipality" name="city" required autoComplete="address-level2" /><label className="field"><span>Province</span><select name="state" defaultValue="" required autoComplete="address-level1"><option value="" disabled>Select province</option>{provinces.map((province) => <option key={province} value={province}>{province}</option>)}</select></label><Field label="Postal code" name="postalCode" required autoComplete="postal-code" /><label className="field"><span>Country</span><select name="country" defaultValue="Nepal" required><option value="Nepal">Nepal</option></select></label></div><h2 className="payment-heading">Payment method</h2><label className="payment-choice"><input type="radio" name="payment" disabled={!canPayEverySellerOnline} checked={paymentMethod === 'esewa'} onChange={() => setPaymentMethod('esewa')} /><span><strong>eSewa</strong><small>{canPayEverySellerOnline ? 'Pay each seller directly to their connected merchant account' : 'Available when every seller connects eSewa'}</small></span><span className="payment-badge">ONLINE</span></label><label className="payment-choice"><input type="radio" name="payment" checked={paymentMethod === 'cash_on_delivery'} onChange={() => setPaymentMethod('cash_on_delivery')} /><span><strong>Cash on delivery to this address</strong><small>Pay in cash when your order arrives at the Nepal delivery address above.</small></span></label>{error && <p className="form-error" role="alert">{error}</p>}<button className="button button-dark full-width" disabled={loading}>{loading ? 'Placing your orders…' : paymentMethod === 'esewa' ? 'Continue to seller payments' : 'Place orders'}</button></form><aside className="summary-box"><h2>Orders by seller</h2>{cart.map(({ product, quantity }) => <div className="summary-product" key={product._id}><span>{product.name} × {quantity}</span><strong>{NPR.format(product.price * quantity)}</strong></div>)}{sellerTotals.map((seller) => <div key={seller.id}><span>{seller.name} · delivery</span><strong>{seller.shippingCost === 0 ? 'Free' : NPR.format(seller.shippingCost)}</strong></div>)}<div className="summary-total"><span>Total across sellers</span><strong>{NPR.format(checkoutTotal)}</strong></div><p className="muted small-copy">Each seller receives a separate order and payment. Delivery is calculated per seller; totals are verified securely when placing orders.</p></aside></div></main>;
+  return <main className="page-wrap"><p className="eyebrow">CHECKOUT</p><h1 className="page-title">Let’s get it to you.</h1><div className="checkout-layout"><form className="checkout-form" onSubmit={checkout}><h2>Delivery details</h2><div className="field-grid"><Field label="Full name" name="fullName" required autoComplete="name" /><Field label="Phone number" name="phone" required type="tel" autoComplete="tel" /><Field label="Address line 1" name="addressLine1" required autoComplete="address-line1" /><Field label="Address line 2 (optional)" name="addressLine2" autoComplete="address-line2" /><Field label="City / municipality" name="city" required autoComplete="address-level2" /><label className="field"><span>Province</span><select name="state" defaultValue="" required autoComplete="address-level1"><option value="" disabled>Select province</option>{provinces.map((province) => <option key={province} value={province}>{province}</option>)}</select></label><label className="field"><span>Country</span><select name="country" defaultValue="Nepal" required><option value="Nepal">Nepal</option></select></label></div><h2 className="payment-heading">Payment method</h2><label className="payment-choice"><input type="radio" name="payment" disabled={!canPayEverySellerOnline} checked={paymentMethod === 'esewa'} onChange={() => setPaymentMethod('esewa')} /><span><strong>eSewa</strong><small>{canPayEverySellerOnline ? 'Pay each seller directly to their connected merchant account' : 'Available when every seller connects eSewa'}</small></span><span className="payment-badge">ONLINE</span></label><label className="payment-choice"><input type="radio" name="payment" checked={paymentMethod === 'cash_on_delivery'} onChange={() => setPaymentMethod('cash_on_delivery')} /><span><strong>Cash on delivery to this address</strong><small>Pay in cash when your order arrives at the Nepal delivery address above.</small></span></label>{error && <p className="form-error" role="alert">{error}</p>}<button className="button button-dark full-width" disabled={loading}>{loading ? 'Placing your orders…' : paymentMethod === 'esewa' ? 'Continue to seller payments' : 'Place orders'}</button></form><aside className="summary-box"><h2>Orders by seller</h2>{cart.map(({ product, quantity }) => <div className="summary-product" key={product._id}><span>{product.name} × {quantity}</span><strong>{NPR.format(product.price * quantity)}</strong></div>)}{sellerTotals.map((seller) => <div key={seller.id}><span>{seller.name} · delivery</span><strong>{seller.shippingCost === 0 ? 'Free' : NPR.format(seller.shippingCost)}</strong></div>)}<div className="summary-total"><span>Total across sellers</span><strong>{NPR.format(checkoutTotal)}</strong></div><p className="muted small-copy">Each seller receives a separate order and payment. Delivery is calculated per seller; totals are verified securely when placing orders.</p></aside></div></main>;
 }
 
 function CheckoutPayments() {
@@ -447,7 +575,7 @@ function OrderDetail() {
   useEffect(() => { request(`/api/v1/orders/${id}`).then(({ order: row }) => setOrder(row)).catch((err) => setError(err.message)); }, [id]);
   if (error) return <main className="page-wrap"><div className="state-card"><h2>Order not found</h2><p>{error}</p></div></main>;
   if (!order) return <main className="page-wrap"><div className="loading-state">Loading order…</div></main>;
-  return <main className="page-wrap"><p className="eyebrow"><Link to="/orders">YOUR ORDERS</Link></p><h1 className="page-title">Order details</h1><div className="order-detail-header"><span>#{order._id}</span><span className={`status-pill status-${order.orderStatus.toLowerCase()}`}>{order.orderStatus}</span><span>Payment: {order.paymentStatus}</span></div><div className="order-items">{order.items.map((item) => <div className="cart-item" key={item._id}><div className="cart-thumbnail">{item.product?.images?.[0] ? <img src={item.product.images[0]} alt="" /> : 'SAJILO'}</div><div className="cart-item-info"><strong>{item.productName}</strong><span>{item.quantity} × {NPR.format(item.price)}</span></div><strong>{NPR.format(item.subtotal)}</strong></div>)}</div><div className="order-total-line"><span>Total paid / due</span><strong>{NPR.format(order.total)}</strong></div><section className="address-card"><h2>Delivery address</h2><p>{order.shippingAddress.fullName} · {order.shippingAddress.phone}<br />{order.shippingAddress.addressLine1}, {order.shippingAddress.city}, {order.shippingAddress.state}, {order.shippingAddress.postalCode}, {order.shippingAddress.country}</p></section></main>;
+  return <main className="page-wrap"><p className="eyebrow"><Link to="/orders">YOUR ORDERS</Link></p><h1 className="page-title">Order details</h1><div className="order-detail-header"><span>#{order._id}</span><span className={`status-pill status-${order.orderStatus.toLowerCase()}`}>{order.orderStatus}</span><span>Payment: {order.paymentStatus}</span></div><div className="order-items">{order.items.map((item) => <div className="cart-item" key={item._id}><div className="cart-thumbnail">{item.product?.images?.[0] ? <img src={item.product.images[0]} alt="" /> : 'SAJILO'}</div><div className="cart-item-info"><strong>{item.productName}</strong><span>{item.quantity} × {NPR.format(item.price)}</span></div><strong>{NPR.format(item.subtotal)}</strong></div>)}</div><div className="order-total-line"><span>Total paid / due</span><strong>{NPR.format(order.total)}</strong></div><section className="address-card"><h2>Delivery address</h2><p>{order.shippingAddress.fullName} · {order.shippingAddress.phone}<br />{order.shippingAddress.addressLine1}, {order.shippingAddress.city}, {order.shippingAddress.state}, {order.shippingAddress.country}</p></section></main>;
 }
 
 function Profile({ session }) {
@@ -709,7 +837,111 @@ function SellerDashboard() {
     </section>
     <section className="dashboard-section">
       <h2>Orders containing your products</h2>
-      {orders.length ? <div className="order-list">{orders.map((order) => <div className="seller-order" key={order._id}><div className="seller-order-heading"><strong>Order #{order._id.slice(-8)}</strong><span>{order.orderStatus} · payment {order.paymentStatus}</span></div>{order.items.map((item) => <label className="seller-fulfillment" key={item._id}><span>{item.productName} × {item.quantity}</span><select aria-label={`Fulfillment status for ${item.productName}`} value={item.fulfillmentStatus || 'PENDING'} onChange={(event) => updateFulfillment(order._id, item._id, event.target.value)}><option>PENDING</option><option>PROCESSING</option><option>SHIPPED</option><option>DELIVERED</option><option>CANCELLED</option></select></label>)}</div>)}</div> : <p className="muted">New orders will appear here.</p>}
+      {orders.length ? <div className="order-list">
+        {orders.map((order) => {
+          const buyerName = order.shippingAddress?.fullName || order.buyer?.name || 'Customer';
+          const buyerPhone = order.shippingAddress?.phone || order.buyer?.phone || '';
+          const buyerEmail = order.buyer?.email || '';
+          const fullAddress = [
+            order.shippingAddress?.addressLine1,
+            order.shippingAddress?.addressLine2,
+            order.shippingAddress?.city,
+            order.shippingAddress?.state,
+            order.shippingAddress?.country || 'Nepal'
+          ].filter(Boolean).join(', ');
+          const paymentMethodText = order.paymentMethod === 'esewa' ? 'eSewa' : 'Cash on Delivery';
+          const orderDate = order.createdAt ? new Date(order.createdAt).toLocaleString() : '';
+
+          return (
+            <div className="seller-order-card" key={order._id}>
+              <div className="seller-order-header">
+                <div>
+                  <span className="order-badge">#{order._id.slice(-8).toUpperCase()}</span>
+                  <span className="order-date-text">{orderDate}</span>
+                </div>
+                <div className="order-badges-row">
+                  <span className={`status-pill status-${(order.orderStatus || '').toLowerCase()}`}>{order.orderStatus}</span>
+                  <span className={`payment-pill payment-${(order.paymentStatus || '').toLowerCase()}`}>
+                    {order.paymentStatus} ({paymentMethodText})
+                  </span>
+                </div>
+              </div>
+
+              {/* Customer & Shipping Information */}
+              <div className="seller-customer-box">
+                <h4>Customer & Shipping Information</h4>
+                <div className="customer-info-grid">
+                  <div>
+                    <strong>Customer:</strong> <span>{buyerName}</span>
+                  </div>
+                  {buyerPhone && (
+                    <div>
+                      <strong>Phone:</strong> <a href={`tel:${buyerPhone}`}>{buyerPhone}</a>
+                    </div>
+                  )}
+                  {buyerEmail && (
+                    <div>
+                      <strong>Email:</strong> <a href={`mailto:${buyerEmail}`}>{buyerEmail}</a>
+                    </div>
+                  )}
+                  <div className="full-width-info">
+                    <strong>Delivery Address:</strong> <span>{fullAddress}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Items Table for this Seller */}
+              <div className="seller-items-section">
+                <h4>Ordered Items</h4>
+                <div className="table-wrap">
+                  <table className="seller-order-table">
+                    <thead>
+                      <tr>
+                        <th>Item</th>
+                        <th>Qty</th>
+                        <th>Unit Price</th>
+                        <th>Subtotal</th>
+                        <th>Fulfillment</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {order.items.map((item) => (
+                        <tr key={item._id}>
+                          <td><strong>{item.productName}</strong></td>
+                          <td>{item.quantity}</td>
+                          <td>{NPR.format(item.price)}</td>
+                          <td><strong>{NPR.format(item.subtotal)}</strong></td>
+                          <td>
+                            <select
+                              aria-label={`Fulfillment status for ${item.productName}`}
+                              className="fulfillment-select"
+                              value={item.fulfillmentStatus || 'PENDING'}
+                              onChange={(event) => updateFulfillment(order._id, item._id, event.target.value)}
+                            >
+                              <option value="PENDING">PENDING</option>
+                              <option value="PROCESSING">PROCESSING</option>
+                              <option value="SHIPPED">SHIPPED</option>
+                              <option value="DELIVERED">DELIVERED</option>
+                              <option value="CANCELLED">CANCELLED</option>
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Order Footer Totals */}
+              <div className="seller-order-footer">
+                <span className="seller-subtotal-text">
+                  Your Subtotal: <strong>{NPR.format(order.sellerSubtotal || order.items.reduce((s, i) => s + i.subtotal, 0))}</strong>
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div> : <p className="muted">New orders will appear here.</p>}
     </section>
   </main>;
 }

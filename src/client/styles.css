@@ -378,3 +378,181 @@ td select { min-height: 32px; border: 1px solid var(--line); background: var(--p
   .help-assistant { right: 12px; bottom: 12px; }
   .help-panel { max-height: min(540px, calc(100dvh - 82px)); }
 }
+
+/* Detailed Seller Order Styles */
+.seller-order-card {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+}
+
+.seller-order-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 16px;
+}
+
+.order-badge {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: 0.05em;
+  margin-right: 12px;
+}
+
+.order-date-text {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.order-badges-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.status-pill {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--sand);
+  color: var(--green-dark);
+}
+
+.status-confirmed, .status-delivered {
+  background: #e6f4ea;
+  color: #137333;
+}
+
+.status-processing, .status-shipped {
+  background: #e8f0fe;
+  color: #1a73e8;
+}
+
+.status-cancelled {
+  background: #fce8e6;
+  color: #c5221f;
+}
+
+.payment-pill {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #f1f3f4;
+  color: #3c4043;
+}
+
+.payment-paid {
+  background: #e6f4ea;
+  color: #137333;
+}
+
+.payment-pending {
+  background: #fef7e0;
+  color: #b06000;
+}
+
+.seller-customer-box {
+  background: #f9fbfb;
+  border: 1px solid #e2ece9;
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 18px;
+}
+
+.seller-customer-box h4 {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--green-dark);
+}
+
+.customer-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px 20px;
+  font-size: 13.5px;
+}
+
+.customer-info-grid .full-width-info {
+  grid-column: 1 / -1;
+}
+
+.customer-info-grid strong {
+  color: var(--ink);
+  margin-right: 6px;
+}
+
+.customer-info-grid a {
+  color: var(--green);
+  text-decoration: underline;
+}
+
+.seller-items-section h4 {
+  margin: 0 0 10px 0;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.seller-order-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.seller-order-table th {
+  background: #f4f8f7;
+  padding: 10px 14px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+}
+
+.seller-order-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.fulfillment-select {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #ccd8d5;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.seller-order-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding-top: 16px;
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.seller-subtotal-text strong {
+  color: var(--green-dark);
+  font-size: 16px;
+  margin-left: 6px;
+}
+
