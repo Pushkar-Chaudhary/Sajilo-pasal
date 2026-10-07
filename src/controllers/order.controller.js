@@ -23,7 +23,7 @@ async function createOrder(req, res) {
       return res.status(400).json({ message: 'Provide between 1 and 50 order items' });
     }
 
-    const addressFields = ['fullName', 'phone', 'addressLine1', 'city', 'state', 'postalCode', 'country'];
+    const addressFields = ['fullName', 'phone', 'addressLine1', 'city', 'state', 'country'];
     if (!shippingAddress || addressFields.some((field) => (
       typeof shippingAddress[field] !== 'string'
       || !shippingAddress[field].trim()
